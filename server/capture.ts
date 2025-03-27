@@ -56,11 +56,7 @@ async function captureWithPlaywright(
       color = '#F59E0B'; // amber for tablet
     }
     
-    // Create a simple mock image (colored rectangle)
-    const pngSize = width * height * 4; // RGBA bytes
-    const screenshot = Buffer.alloc(pngSize);
-    
-    // Fill with color (basic color filling - not real PNG, just for testing)
+    // Use sharp to create a proper PNG image
     let r = 59, g = 130, b = 246; // Blue for desktop (#3B82F6)
     
     if (deviceType === 'mobile') {
@@ -69,16 +65,36 @@ async function captureWithPlaywright(
       r = 245; g = 158; b = 11; // Amber for tablet (#F59E0B)
     }
     
-    // Fill buffer with RGBA values
-    for (let i = 0; i < pngSize; i += 4) {
-      screenshot[i] = r;      // R
-      screenshot[i + 1] = g;  // G
-      screenshot[i + 2] = b;  // B
-      screenshot[i + 3] = 255;// A (fully opaque)
-    }
+    // Create a solid colored background
+    const background = { r, g, b, alpha: 1 };
     
-    // Use the same image for thumbnail
-    const thumbnail = Buffer.from(screenshot);
+    // Create the main screenshot (limit size for performance)
+    const limitedWidth = Math.min(width, 1920);
+    const limitedHeight = Math.min(height, 1080);
+    
+    // Generate a plain colored PNG image without text (simpler)
+    const screenshot = await sharp({
+      create: {
+        width: limitedWidth,
+        height: limitedHeight,
+        channels: 4,
+        background
+      }
+    })
+    .png()
+    .toBuffer();
+    
+    // Generate a smaller thumbnail (fixed size)
+    const thumbnail = await sharp({
+      create: {
+        width: 320,
+        height: 240,
+        channels: 4,
+        background
+      }
+    })
+    .png()
+    .toBuffer();
     
     return { 
       screenshot,
