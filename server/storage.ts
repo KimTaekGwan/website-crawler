@@ -29,6 +29,7 @@ export interface IStorage {
   getWebsiteById(id: number): Promise<Website | undefined>;
   getWebsiteByUrl(url: string): Promise<Website | undefined>;
   getWebsites(): Promise<WebsiteWithDetails[]>;
+  updateWebsite(id: number, data: Partial<InsertWebsite>): Promise<Website>;
   addTagToWebsite(websiteTag: InsertWebsiteTag): Promise<WebsiteTag>;
   getWebsiteTags(websiteId: number): Promise<Tag[]>;
   
@@ -47,6 +48,7 @@ export interface IStorage {
   getPageById(id: number): Promise<Page | undefined>;
   getPagesByWebsiteId(websiteId: number): Promise<Page[]>;
   getPageWithDetails(id: number): Promise<PageWithDetails | undefined>;
+  updatePage(id: number, data: Partial<InsertPage>): Promise<Page>;
   addTagToPage(pageTag: InsertPageTag): Promise<PageTag>;
   getPageTags(pageId: number): Promise<Tag[]>;
   
@@ -156,7 +158,12 @@ export class MemStorage implements IStorage {
   // Tag methods
   async createTag(insertTag: InsertTag): Promise<Tag> {
     const id = this.currentTagIds++;
-    const tag: Tag = { ...insertTag, id };
+    const tag: Tag = { 
+      ...insertTag, 
+      id, 
+      color: insertTag.color || '#000000',
+      description: insertTag.description || null
+    };
     this.tags.set(id, tag);
     return tag;
   }
@@ -231,6 +238,15 @@ export class MemStorage implements IStorage {
       })
     );
   }
+  
+  async updateWebsite(id: number, data: Partial<InsertWebsite>): Promise<Website> {
+    const website = this.websites.get(id);
+    if (!website) throw new Error(`Website with ID ${id} not found`);
+    
+    const updatedWebsite = { ...website, ...data };
+    this.websites.set(id, updatedWebsite);
+    return updatedWebsite;
+  }
 
   async addTagToWebsite(insertWebsiteTag: InsertWebsiteTag): Promise<WebsiteTag> {
     const id = this.currentWebsiteTagIds++;
@@ -258,7 +274,9 @@ export class MemStorage implements IStorage {
       progress: 0,
       createdAt: new Date(),
       completedAt: null,
-      error: null
+      error: null,
+      captureFullPage: insertCapture.captureFullPage || false,
+      captureDynamicElements: insertCapture.captureDynamicElements || false
     };
     this.captures.set(id, capture);
     return capture;
@@ -354,7 +372,8 @@ export class MemStorage implements IStorage {
     const page: Page = { 
       ...insertPage, 
       id, 
-      createdAt: new Date()
+      createdAt: new Date(),
+      title: insertPage.title || null
     };
     this.pages.set(id, page);
     return page;
@@ -383,6 +402,15 @@ export class MemStorage implements IStorage {
       screenshots
     };
   }
+  
+  async updatePage(id: number, data: Partial<InsertPage>): Promise<Page> {
+    const page = this.pages.get(id);
+    if (!page) throw new Error(`Page with ID ${id} not found`);
+    
+    const updatedPage = { ...page, ...data };
+    this.pages.set(id, updatedPage);
+    return updatedPage;
+  }
 
   async addTagToPage(insertPageTag: InsertPageTag): Promise<PageTag> {
     const id = this.currentPageTagIds++;
@@ -407,7 +435,8 @@ export class MemStorage implements IStorage {
       ...insertScreenshot, 
       id, 
       version: 1,
-      createdAt: new Date()
+      createdAt: new Date(),
+      metadata: insertScreenshot.metadata || {}
     };
     this.screenshots.set(id, screenshot);
     return screenshot;
@@ -436,7 +465,12 @@ export class MemStorage implements IStorage {
   // Device profile methods
   async createDeviceProfile(insertProfile: InsertDeviceProfile): Promise<DeviceProfile> {
     const id = this.currentDeviceProfileIds++;
-    const profile: DeviceProfile = { ...insertProfile, id };
+    const profile: DeviceProfile = { 
+      ...insertProfile, 
+      id,
+      userId: insertProfile.userId || null,
+      isDefault: insertProfile.isDefault || false
+    };
     this.deviceProfiles.set(id, profile);
     return profile;
   }

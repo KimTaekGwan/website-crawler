@@ -4,6 +4,9 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { IStorage } from './storage';
 import { CaptureConfig } from '@shared/schema';
+import { chromium, devices } from 'playwright';
+import { Browser, BrowserContext, Page } from 'playwright-core';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,37 +16,97 @@ const storageDir = path.join(__dirname, '..', 'storage');
 const websitesDir = path.join(storageDir, 'websites');
 fs.mkdirSync(websitesDir, { recursive: true });
 
-// Simulate Playwright functionality without actual Playwright
-// In a real implementation, this would use the actual Playwright API
-async function simulatePlaywrightCapture(
+// Real Playwright implementation for capturing screenshots
+async function captureWithPlaywright(
   url: string,
   deviceType: string,
   width: number,
   height: number,
   captureFullPage: boolean,
   captureDynamicElements: boolean
-): Promise<{ screenshot: Buffer, thumbnail: Buffer }> {
-  // Simulate delay for capturing
-  await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+): Promise<{ screenshot: Buffer, thumbnail: Buffer, title: string, links: string[] }> {
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  let page: Page | null = null;
   
-  // Create a random colored buffer to simulate a screenshot
-  // In a real implementation, this would be the actual screenshot
-  const screenshotSize = 1024 * 1024 * (1 + Math.random()); // 1-2MB
-  const screenshotBuffer = Buffer.alloc(screenshotSize);
-  
-  // Create a smaller thumbnail
-  const thumbnailSize = 100 * 100 * 4; // Small RGBA image
-  const thumbnailBuffer = Buffer.alloc(thumbnailSize);
-  
-  // Randomly fail some captures to simulate real-world errors
-  if (Math.random() < 0.05) {
-    throw new Error('Failed to capture screenshot');
+  try {
+    // Launch browser
+    browser = await chromium.launch({ headless: true });
+    
+    // Setup viewport and device emulation
+    let contextOptions: any = {
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+    };
+    
+    // Apply device emulation for standard device types
+    if (deviceType === 'mobile') {
+      contextOptions = devices['iPhone 12'];
+    } else if (deviceType === 'tablet') {
+      contextOptions = devices['iPad Pro 11'];
+    }
+    
+    // Create browser context
+    context = await browser.newContext(contextOptions);
+    
+    // Create page
+    page = await context.newPage();
+    
+    // Navigate to URL with timeout
+    await page.goto(url, { 
+      waitUntil: captureFullPage ? 'networkidle' : 'domcontentloaded',
+      timeout: 30000 
+    });
+    
+    // Wait for dynamic content if requested
+    if (captureDynamicElements) {
+      await page.waitForTimeout(3000); // Additional time for dynamic content
+    }
+    
+    // Get page title
+    const title = await page.title();
+    
+    // Extract all links from the page
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a[href]'))
+        .map(a => a.getAttribute('href'))
+        .filter(href => href && !href.startsWith('#') && !href.startsWith('javascript:'))
+        .map(href => {
+          try {
+            return new URL(href!, window.location.href).toString();
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter(Boolean) as string[];
+    });
+    
+    // Take screenshot
+    const screenshot = await page.screenshot({ 
+      fullPage: captureFullPage,
+      type: 'png'
+    });
+    
+    // Generate thumbnail using sharp
+    const thumbnail = await sharp(screenshot)
+      .resize(300, null) // Resize width to 300px, maintain aspect ratio
+      .toBuffer();
+      
+    return { 
+      screenshot: screenshot,
+      thumbnail: thumbnail,
+      title: title,
+      links: links
+    };
+  } catch (error) {
+    console.error('Playwright capture error:', error);
+    throw error;
+  } finally {
+    // Clean up resources
+    if (page) await page.close().catch(e => console.error('Error closing page:', e));
+    if (context) await context.close().catch(e => console.error('Error closing context:', e));
+    if (browser) await browser.close().catch(e => console.error('Error closing browser:', e));
   }
-  
-  return {
-    screenshot: screenshotBuffer,
-    thumbnail: thumbnailBuffer
-  };
 }
 
 export async function startCapture(
@@ -73,14 +136,53 @@ export async function startCapture(
     const pagesDir = path.join(captureDir, 'pages');
     fs.mkdirSync(pagesDir, { recursive: true });
     
-    // Simulate page discovery - in reality, this would crawl the website
-    // or use a predefined list of URLs
-    const pageUrls = [
-      config.url,
-      `${config.url}/about`,
-      `${config.url}/products`,
-      `${config.url}/contact`,
-    ];
+    // Start with the main URL and discover links from there
+    let pageUrls = [config.url];
+    let discoveredUrls = new Set<string>([config.url]);
+    
+    // Initial capture of the main page to discover links
+    try {
+      // Get device dimensions for desktop (default)
+      const width = 1920;
+      const height = 1080;
+      
+      // Capture the main page to discover links
+      const { links, title } = await captureWithPlaywright(
+        config.url,
+        'desktop',
+        width,
+        height,
+        capture.captureFullPage,
+        capture.captureDynamicElements
+      );
+      
+      // Filter discovered links to stay within the same domain
+      const urlObj = new URL(config.url);
+      const baseDomain = urlObj.hostname;
+      
+      for (const link of links) {
+        try {
+          const linkUrl = new URL(link);
+          // Only include links from the same domain and limit to a reasonable number
+          if (linkUrl.hostname === baseDomain && !discoveredUrls.has(link) && discoveredUrls.size < 10) {
+            pageUrls.push(link);
+            discoveredUrls.add(link);
+          }
+        } catch (e) {
+          // Skip invalid URLs
+          console.error('Invalid URL:', link, e);
+        }
+      }
+      
+      // Update the main page title if we got it from the capture
+      if (title) {
+        await storage.updateWebsite(website.id, { name: title });
+      }
+      
+    } catch (error) {
+      console.error('Error during link discovery:', error);
+      // Continue with just the main URL if discovery fails
+    }
     
     // Create page records for each URL
     const pages = [];
@@ -88,7 +190,7 @@ export async function startCapture(
       const page = await storage.createPage({
         websiteId: website.id,
         url,
-        title: `Page at ${url}`
+        title: null // We'll update this during capture
       });
       pages.push(page);
     }
@@ -128,8 +230,8 @@ export async function startCapture(
             }
           }
           
-          // Capture screenshot
-          const { screenshot, thumbnail } = await simulatePlaywrightCapture(
+          // Capture screenshot using Playwright
+          const { screenshot, thumbnail, title } = await captureWithPlaywright(
             pageObj.url,
             deviceType,
             width,
@@ -137,6 +239,12 @@ export async function startCapture(
             capture.captureFullPage,
             capture.captureDynamicElements
           );
+          
+          // Update page title if not already set
+          if (title && (!pageObj.title || pageObj.title === `Page at ${pageObj.url}`)) {
+            await storage.updatePage(pageObj.id, { title });
+            pageObj.title = title;
+          }
           
           // Save screenshot and thumbnail
           const screenshotPath = path.join(deviceDir, 'current.png');
@@ -156,6 +264,7 @@ export async function startCapture(
             height,
             metadata: {
               url: pageObj.url,
+              title: pageObj.title,
               captureFullPage: capture.captureFullPage,
               captureDynamicElements: capture.captureDynamicElements
             }
