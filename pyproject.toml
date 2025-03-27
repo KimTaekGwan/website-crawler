@@ -13,4 +13,9 @@ dependencies = [
     "python-multipart>=0.0.20",
     "sqlalchemy>=2.0.39",
     "uvicorn>=0.34.0",
+    "pillow>=11.1.0",
+    "python-slugify>=8.0.4",
+    "playwright>=1.51.0",
+    "email-validator>=2.2.0",
+    "aiofiles>=24.1.0",
 ]
