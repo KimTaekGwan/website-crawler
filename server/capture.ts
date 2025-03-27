@@ -56,24 +56,29 @@ async function captureWithPlaywright(
       color = '#F59E0B'; // amber for tablet
     }
     
-    // Create a simple SVG
-    const svgWidth = width;
-    const svgHeight = height > 800 ? 800 : height; // Limit height for mock
+    // Create a simple mock image (colored rectangle)
+    const pngSize = width * height * 4; // RGBA bytes
+    const screenshot = Buffer.alloc(pngSize);
     
-    const svg = `
-      <svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${color}" />
-        <text x="50%" y="50%" font-family="Arial" font-size="20" fill="white" text-anchor="middle">
-          Mock capture of ${urlObj.hostname} on ${deviceType} (${width}x${height})
-        </text>
-      </svg>
-    `;
+    // Fill with color (basic color filling - not real PNG, just for testing)
+    let r = 59, g = 130, b = 246; // Blue for desktop (#3B82F6)
     
-    // Convert SVG to PNG
-    const screenshot = Buffer.from(svg);
+    if (deviceType === 'mobile') {
+      r = 16; g = 185; b = 129; // Green for mobile (#10B981)
+    } else if (deviceType === 'tablet') {
+      r = 245; g = 158; b = 11; // Amber for tablet (#F59E0B)
+    }
     
-    // For thumbnail, use the same image (normally we'd resize it)
-    const thumbnail = screenshot;
+    // Fill buffer with RGBA values
+    for (let i = 0; i < pngSize; i += 4) {
+      screenshot[i] = r;      // R
+      screenshot[i + 1] = g;  // G
+      screenshot[i + 2] = b;  // B
+      screenshot[i + 3] = 255;// A (fully opaque)
+    }
+    
+    // Use the same image for thumbnail
+    const thumbnail = Buffer.from(screenshot);
     
     return { 
       screenshot,
