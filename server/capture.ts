@@ -16,7 +16,7 @@ const storageDir = path.join(__dirname, '..', 'storage');
 const websitesDir = path.join(storageDir, 'websites');
 fs.mkdirSync(websitesDir, { recursive: true });
 
-// Mock implementation for capturing screenshots (for development/testing)
+// Real Playwright implementation for capturing screenshots
 async function captureWithPlaywright(
   url: string,
   deviceType: string,
@@ -25,86 +25,87 @@ async function captureWithPlaywright(
   captureFullPage: boolean,
   captureDynamicElements: boolean
 ): Promise<{ screenshot: Buffer, thumbnail: Buffer, title: string, links: string[] }> {
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  let page: Page | null = null;
+  
   try {
-    console.log(`[Mock] Capturing ${url} for device ${deviceType} (${width}x${height})`);
+    // Launch browser
+    browser = await chromium.launch({ headless: true });
     
-    // Create a mock title from the URL
-    const urlObj = new URL(url);
-    const title = `${urlObj.hostname} - Mock Capture`;
+    // Setup viewport and device emulation
+    let contextOptions: any = {
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+    };
     
-    // Create mock links (just return the original URL and some fake paths)
-    const links = [
-      url,
-      `${url}/about`,
-      `${url}/products`,
-      `${url}/contact`
-    ].filter(link => {
-      try {
-        new URL(link); // This will throw if the URL is invalid
-        return true;
-      } catch {
-        return false;
-      }
+    // Apply device emulation for standard device types
+    if (deviceType === 'mobile') {
+      contextOptions = devices['iPhone 12'];
+    } else if (deviceType === 'tablet') {
+      contextOptions = devices['iPad Pro 11'];
+    }
+    
+    // Create browser context
+    context = await browser.newContext(contextOptions);
+    
+    // Create page
+    page = await context.newPage();
+    
+    // Navigate to URL with timeout
+    await page.goto(url, { 
+      waitUntil: captureFullPage ? 'networkidle' : 'domcontentloaded',
+      timeout: 30000 
     });
     
-    // Create a simple colored rectangle as a mock screenshot
-    // Different colors for different device types
-    let color = '#3B82F6'; // blue for desktop
-    if (deviceType === 'mobile') {
-      color = '#10B981'; // green for mobile
-    } else if (deviceType === 'tablet') {
-      color = '#F59E0B'; // amber for tablet
+    // Wait for dynamic content if requested
+    if (captureDynamicElements) {
+      await page.waitForTimeout(3000); // Additional time for dynamic content
     }
     
-    // Use sharp to create a proper PNG image
-    let r = 59, g = 130, b = 246; // Blue for desktop (#3B82F6)
+    // Get page title
+    const title = await page.title();
     
-    if (deviceType === 'mobile') {
-      r = 16; g = 185; b = 129; // Green for mobile (#10B981)
-    } else if (deviceType === 'tablet') {
-      r = 245; g = 158; b = 11; // Amber for tablet (#F59E0B)
-    }
+    // Extract all links from the page
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a[href]'))
+        .map(a => a.getAttribute('href'))
+        .filter(href => href && !href.startsWith('#') && !href.startsWith('javascript:'))
+        .map(href => {
+          try {
+            return new URL(href!, window.location.href).toString();
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter(Boolean) as string[];
+    });
     
-    // Create a solid colored background
-    const background = { r, g, b, alpha: 1 };
+    // Take screenshot
+    const screenshot = await page.screenshot({ 
+      fullPage: captureFullPage,
+      type: 'png'
+    });
     
-    // Create the main screenshot (limit size for performance)
-    const limitedWidth = Math.min(width, 1920);
-    const limitedHeight = Math.min(height, 1080);
-    
-    // Generate a plain colored PNG image without text (simpler)
-    const screenshot = await sharp({
-      create: {
-        width: limitedWidth,
-        height: limitedHeight,
-        channels: 4,
-        background
-      }
-    })
-    .png()
-    .toBuffer();
-    
-    // Generate a smaller thumbnail (fixed size)
-    const thumbnail = await sharp({
-      create: {
-        width: 320,
-        height: 240,
-        channels: 4,
-        background
-      }
-    })
-    .png()
-    .toBuffer();
-    
+    // Generate thumbnail using sharp
+    const thumbnail = await sharp(screenshot)
+      .resize(300, null) // Resize width to 300px, maintain aspect ratio
+      .toBuffer();
+      
     return { 
-      screenshot,
-      thumbnail,
-      title,
-      links
+      screenshot: screenshot,
+      thumbnail: thumbnail,
+      title: title,
+      links: links
     };
   } catch (error) {
-    console.error('Mock capture error:', error);
+    console.error('Playwright capture error:', error);
     throw error;
+  } finally {
+    // Clean up resources
+    if (page) await page.close().catch(e => console.error('Error closing page:', e));
+    if (context) await context.close().catch(e => console.error('Error closing context:', e));
+    if (browser) await browser.close().catch(e => console.error('Error closing browser:', e));
   }
 }
 

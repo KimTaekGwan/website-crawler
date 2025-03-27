@@ -4,51 +4,21 @@ import { CaptureWithDetails } from "@shared/schema";
 import CaptureStatusBadge from "@/components/captures/CaptureStatusBadge";
 import TagBadge from "@/components/tags/TagBadge";
 import { Progress } from "@/components/ui/progress";
-import { useEffect } from "react";
 
 interface ScreenshotProps {
   pagePath: string;
   deviceType: string;
 }
 
-// Display screenshots from the API
+// A placeholder for the actual screenshot display
 function Screenshot({ pagePath, deviceType }: ScreenshotProps) {
-  // Use a query to fetch the screenshot data
-  const { data: screenshots, isLoading } = useQuery({
-    queryKey: [`/api/pages/screenshots`, { pagePath, deviceType }],
-    // Mock screenshot for now - in reality, we'd implement this API endpoint
-    enabled: false // Disable the query for now since we're using a mock
-  });
-
   return (
     <div className="border border-gray-200 rounded-md overflow-hidden">
       <div className="bg-gray-100 h-8 flex items-center px-3 border-b border-gray-200">
         <span className="text-sm text-gray-600 font-medium">{deviceType}</span>
       </div>
-      <div className="h-96 bg-gray-50 flex items-center justify-center relative overflow-hidden">
-        {isLoading ? (
-          <div className="animate-pulse w-full h-full bg-gray-200"></div>
-        ) : screenshots ? (
-          <img 
-            src={`/api/screenshots/placeholder?device=${deviceType}`} 
-            alt={`Screenshot of ${pagePath} on ${deviceType}`}
-            className="w-full h-auto object-contain"
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center text-center p-4">
-            <div className="rounded-full bg-blue-100 p-3 mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
-                <rect width="18" height="14" x="3" y="5" rx="2" />
-                <path d="M21 16V8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8" />
-                <path d="M3 16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2" />
-                <path d="M12 16a2 2 0 0 0 2-2v-4a2 2 0 0 0-4 0v4a2 2 0 0 0 2 2Z" />
-              </svg>
-            </div>
-            <p className="text-gray-600 font-medium">Screenshot Generated</p>
-            <p className="text-gray-500 text-sm mt-1">Device: {deviceType}</p>
-            <p className="text-gray-500 text-sm">URL: {pagePath}</p>
-          </div>
-        )}
+      <div className="h-96 bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Screenshot would be displayed here for {pagePath}</p>
       </div>
     </div>
   );
@@ -57,19 +27,9 @@ function Screenshot({ pagePath, deviceType }: ScreenshotProps) {
 export default function CaptureDetails() {
   const { id } = useParams<{ id: string }>();
   
-  const { data: capture, isLoading, refetch } = useQuery<CaptureWithDetails>({
+  const { data: capture, isLoading } = useQuery<CaptureWithDetails>({
     queryKey: [`/api/captures/${id}`],
-    // Fix: Adding refetchOnMount to ensure data is loaded properly
-    refetchOnMount: true,
   });
-  
-  // Fix for "invariant expected app router to be mounted" error
-  useEffect(() => {
-    // This is just a placeholder to ensure proper router mounting
-    return () => {
-      // Cleanup (if needed)
-    };
-  }, []);
 
   if (isLoading) {
     return (

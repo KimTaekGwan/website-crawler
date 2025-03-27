@@ -303,47 +303,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== Screenshot routes =====
-  // Helper endpoint for generating placeholder screenshots
-  app.get('/api/screenshots/placeholder', async (req: Request, res: Response) => {
-    const device = req.query.device as string || 'desktop';
-    
-    try {
-      // Generate placeholder image
-      const sharp = await import('sharp');
-      
-      // Different placeholder for different device types
-      const width = device === 'desktop' ? 1280 : 375;
-      const height = device === 'desktop' ? 800 : 667;
-      
-      const placeholderColor = device === 'desktop' ? '#f0f4ff' : '#f0fff4';
-      const textColor = device === 'desktop' ? '#3b82f6' : '#22c55e';
-      
-      // Create SVG with device info
-      const svgImage = `
-      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${placeholderColor}"/>
-        <text x="50%" y="50%" font-family="Arial" font-size="24" fill="${textColor}" text-anchor="middle">
-          ${device.toUpperCase()} SCREENSHOT PLACEHOLDER
-        </text>
-        <text x="50%" y="54%" font-family="Arial" font-size="16" fill="${textColor}" text-anchor="middle">
-          ${width}x${height}
-        </text>
-      </svg>`;
-      
-      // Convert SVG to PNG
-      const pngBuffer = await sharp.default(Buffer.from(svgImage))
-        .toFormat('png')
-        .toBuffer();
-      
-      // Send the image
-      res.setHeader('Content-Type', 'image/png');
-      res.send(pngBuffer);
-    } catch (error) {
-      console.error('Error generating placeholder screenshot:', error);
-      res.status(500).json({ message: 'Error generating placeholder image' });
-    }
-  });
-
   app.get('/api/screenshots/:id', async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
